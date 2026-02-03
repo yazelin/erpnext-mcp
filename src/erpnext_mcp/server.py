@@ -430,6 +430,164 @@ async def download_file(file_name: str) -> dict:
     }
 
 
+# ── Supplier/Customer Details ──────────────────────────
+
+
+@mcp.tool()
+async def get_supplier_details(name: str | None = None, keyword: str | None = None) -> dict:
+    """Get complete supplier details including address, phone, and contacts.
+
+    Args:
+        name: Exact supplier name (e.g. "SF0009-2 - 永心企業社")
+        keyword: Search keyword to find supplier (e.g. "永心")
+
+    Returns:
+        Dict with supplier info, address (phone/fax), and contacts (our purchaser + their contacts)
+    """
+    client = get_client()
+
+    # Find supplier
+    if name:
+        supplier = await client.get_doc("Supplier", name)
+    elif keyword:
+        suppliers = await client.get_list(
+            "Supplier",
+            fields=["name", "supplier_name", "supplier_group", "country"],
+            filters={"name": ["like", f"%{keyword}%"]},
+            limit_page_length=1,
+        )
+        if not suppliers:
+            return {"error": f"找不到關鍵字「{keyword}」的供應商"}
+        supplier = await client.get_doc("Supplier", suppliers[0]["name"])
+    else:
+        return {"error": "請提供 name 或 keyword"}
+
+    supplier_name = supplier.get("name")
+
+    # Get address (phone/fax)
+    # Address title format: "代碼 地址", e.g. "SF0009-2 地址"
+    code = supplier_name.split(" - ")[0] if " - " in supplier_name else supplier_name
+    addresses = await client.get_list(
+        "Address",
+        fields=["address_title", "address_line1", "city", "pincode", "phone", "fax"],
+        filters={"address_title": ["like", f"%{code}%"]},
+        limit_page_length=5,
+    )
+
+    # Get contacts via Dynamic Link
+    contacts = await client.get_list(
+        "Contact",
+        fields=["name", "first_name", "designation", "phone", "mobile_no", "email_id"],
+        filters=[["Dynamic Link", "link_name", "=", supplier_name]],
+        limit_page_length=50,
+    )
+
+    # Categorize contacts
+    # 有 designation 的是我們的人（採購人員/業務人員），沒有的是對方的聯絡人
+    our_contacts = []
+    their_contacts = []
+    for c in contacts:
+        contact_info = {
+            "name": c.get("first_name") or c.get("name"),
+            "designation": c.get("designation") or "",
+            "phone": c.get("phone") or c.get("mobile_no") or "",
+            "email": c.get("email_id") or "",
+        }
+        if c.get("designation"):
+            our_contacts.append(contact_info)
+        else:
+            their_contacts.append(contact_info)
+
+    return {
+        "supplier": {
+            "name": supplier_name,
+            "group": supplier.get("supplier_group"),
+            "country": supplier.get("country"),
+            "currency": supplier.get("default_currency"),
+        },
+        "address": addresses[0] if addresses else None,
+        "our_contacts": our_contacts,
+        "their_contacts": their_contacts,
+    }
+
+
+@mcp.tool()
+async def get_customer_details(name: str | None = None, keyword: str | None = None) -> dict:
+    """Get complete customer details including address, phone, and contacts.
+
+    Args:
+        name: Exact customer name (e.g. "CM0001 - 正達工程股份有限公司")
+        keyword: Search keyword to find customer (e.g. "正達")
+
+    Returns:
+        Dict with customer info, address (phone/fax), and contacts (our sales + their contacts)
+    """
+    client = get_client()
+
+    # Find customer
+    if name:
+        customer = await client.get_doc("Customer", name)
+    elif keyword:
+        customers = await client.get_list(
+            "Customer",
+            fields=["name", "customer_name", "customer_group", "territory"],
+            filters={"name": ["like", f"%{keyword}%"]},
+            limit_page_length=1,
+        )
+        if not customers:
+            return {"error": f"找不到關鍵字「{keyword}」的客戶"}
+        customer = await client.get_doc("Customer", customers[0]["name"])
+    else:
+        return {"error": "請提供 name 或 keyword"}
+
+    customer_name = customer.get("name")
+
+    # Get address (phone/fax)
+    code = customer_name.split(" - ")[0] if " - " in customer_name else customer_name
+    addresses = await client.get_list(
+        "Address",
+        fields=["address_title", "address_line1", "city", "pincode", "phone", "fax"],
+        filters={"address_title": ["like", f"%{code}%"]},
+        limit_page_length=5,
+    )
+
+    # Get contacts via Dynamic Link
+    contacts = await client.get_list(
+        "Contact",
+        fields=["name", "first_name", "designation", "phone", "mobile_no", "email_id"],
+        filters=[["Dynamic Link", "link_name", "=", customer_name]],
+        limit_page_length=50,
+    )
+
+    # Categorize contacts
+    # 有 designation 的是我們的人（採購人員/業務人員），沒有的是對方的聯絡人
+    our_contacts = []
+    their_contacts = []
+    for c in contacts:
+        contact_info = {
+            "name": c.get("first_name") or c.get("name"),
+            "designation": c.get("designation") or "",
+            "phone": c.get("phone") or c.get("mobile_no") or "",
+            "email": c.get("email_id") or "",
+        }
+        if c.get("designation"):
+            our_contacts.append(contact_info)
+        else:
+            their_contacts.append(contact_info)
+
+    return {
+        "customer": {
+            "name": customer_name,
+            "group": customer.get("customer_group"),
+            "territory": customer.get("territory"),
+            "currency": customer.get("default_currency"),
+        },
+        "address": addresses[0] if addresses else None,
+        "our_contacts": our_contacts,
+        "their_contacts": their_contacts,
+    }
+
+
 def main():
     mcp.run()
 
