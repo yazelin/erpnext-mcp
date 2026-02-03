@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "erpnext": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/erpnext-mcp", "erpnext-mcp"],
+      "env": {
+        "ERPNEXT_URL": "http://your-erpnext-site.com",
+        "ERPNEXT_API_KEY": "your_api_key",
+        "ERPNEXT_API_SECRET": "your_api_secret"
+      }
+    }
+  }
+}
