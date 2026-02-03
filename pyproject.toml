@@ -1,6 +1,6 @@
 [project]
 name = "erpnext-mcp"
-version = "0.2.0"
+version = "0.3.0"
 description = "MCP Server for ERPNext REST API"
 readme = "README.md"
 license = {file = "LICENSE"}
