@@ -68,7 +68,7 @@ set -a && source .env && set +a && uv run erpnext-mcp
 | `get_party_balance` | Outstanding balance for Customer/Supplier |
 | `get_supplier_details` | Get supplier with address, phone, contacts (supports alias search) |
 | `get_customer_details` | Get customer with address, phone, contacts (supports alias search) |
-| `upload_file` | Upload a file to ERPNext |
+| `upload_file` | Upload a local file to ERPNext (by file path) |
 | `upload_file_from_url` | Upload a file from URL |
 | `list_files` | List files attached to a document |
 | `download_file` | Download a file by URL |

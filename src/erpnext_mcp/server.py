@@ -314,37 +314,6 @@ async def get_stock_ledger(item_code: str | None = None, warehouse: str | None =
 
 
 @mcp.tool()
-async def upload_file(
-    file_content_base64: str,
-    filename: str,
-    attached_to_doctype: str | None = None,
-    attached_to_name: str | None = None,
-    is_private: bool = True,
-) -> dict:
-    """Upload a file to ERPNext.
-
-    Args:
-        file_content_base64: File content encoded as base64 string
-        filename: Name for the uploaded file (e.g. "report.pdf")
-        attached_to_doctype: Optional DocType to attach file to (e.g. "Project", "Item")
-        attached_to_name: Optional document name to attach file to (e.g. "PROJ-0001")
-        is_private: Whether file should be private (default True)
-
-    Returns:
-        File document with file_url and other metadata
-    """
-    import base64
-    file_content = base64.b64decode(file_content_base64)
-    return await get_client().upload_file(
-        file_content=file_content,
-        filename=filename,
-        attached_to_doctype=attached_to_doctype,
-        attached_to_name=attached_to_name,
-        is_private=is_private,
-    )
-
-
-@mcp.tool()
 async def upload_file_from_url(
     file_url: str,
     filename: str | None = None,
@@ -367,6 +336,47 @@ async def upload_file_from_url(
     return await get_client().upload_file_from_url(
         file_url=file_url,
         filename=filename,
+        attached_to_doctype=attached_to_doctype,
+        attached_to_name=attached_to_name,
+        is_private=is_private,
+    )
+
+
+@mcp.tool()
+async def upload_file(
+    file_path: str,
+    filename: str | None = None,
+    attached_to_doctype: str | None = None,
+    attached_to_name: str | None = None,
+    is_private: bool = True,
+) -> dict:
+    """Upload a local file to ERPNext.
+
+    Args:
+        file_path: Local file path to upload (e.g. "/mnt/nas/files/report.pdf")
+        filename: Optional name for the uploaded file (defaults to original filename)
+        attached_to_doctype: Optional DocType to attach file to (e.g. "Project", "Item")
+        attached_to_name: Optional document name to attach file to (e.g. "PROJ-0001")
+        is_private: Whether file should be private (default True)
+
+    Returns:
+        File document with file_url and other metadata
+    """
+    from pathlib import Path
+
+    path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    # 讀取檔案內容
+    file_content = path.read_bytes()
+
+    # 使用原始檔名或指定的檔名
+    upload_filename = filename or path.name
+
+    return await get_client().upload_file(
+        file_content=file_content,
+        filename=upload_filename,
         attached_to_doctype=attached_to_doctype,
         attached_to_name=attached_to_name,
         is_private=is_private,
