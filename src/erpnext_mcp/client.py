@@ -248,7 +248,10 @@ class ERPNextClient:
                 "/api/method/upload_file",
                 files=files,
                 data=data,
-                headers={"Authorization": self.headers["Authorization"]},
+                headers={
+                    "Authorization": self.headers["Authorization"],
+                    "Expect": "",  # 禁用 100-continue，避免 417 錯誤
+                },
             )
             resp.raise_for_status()
             result = resp.json()
