@@ -207,3 +207,169 @@ class ERPNextClient:
             },
         )
         return result.get("data", [])
+
+    # --- File operations ---
+
+    async def upload_file(
+        self,
+        file_content: bytes,
+        filename: str,
+        attached_to_doctype: str | None = None,
+        attached_to_name: str | None = None,
+        is_private: bool = True,
+    ) -> dict:
+        """上傳檔案到 ERPNext。
+
+        Args:
+            file_content: 檔案內容（bytes）
+            filename: 檔案名稱
+            attached_to_doctype: 附加到的 DocType（如 "Project"）
+            attached_to_name: 附加到的文件名稱（如 "PROJ-0001"）
+            is_private: 是否為私有檔案（預設 True）
+
+        Returns:
+            File 文件資料，包含 file_url 等
+        """
+        # 使用獨立的 httpx client 避免 header 衝突
+        async with httpx.AsyncClient(base_url=self.base_url, timeout=60.0) as client:
+            # 準備 multipart form data
+            files = {
+                "file": (filename, file_content),
+            }
+            data: dict[str, str] = {
+                "is_private": "1" if is_private else "0",
+            }
+            if attached_to_doctype:
+                data["doctype"] = attached_to_doctype
+            if attached_to_name:
+                data["docname"] = attached_to_name
+
+            resp = await client.post(
+                "/api/method/upload_file",
+                files=files,
+                data=data,
+                headers={"Authorization": self.headers["Authorization"]},
+            )
+            resp.raise_for_status()
+            result = resp.json()
+            return result.get("message", result)
+
+    async def upload_file_from_url(
+        self,
+        file_url: str,
+        filename: str | None = None,
+        attached_to_doctype: str | None = None,
+        attached_to_name: str | None = None,
+        is_private: bool = True,
+    ) -> dict:
+        """從 URL 上傳檔案到 ERPNext。
+
+        Args:
+            file_url: 檔案來源 URL
+            filename: 檔案名稱（可選，會從 URL 推斷）
+            attached_to_doctype: 附加到的 DocType
+            attached_to_name: 附加到的文件名稱
+            is_private: 是否為私有檔案
+
+        Returns:
+            File 文件資料
+        """
+        # 使用獨立的 httpx client
+        async with httpx.AsyncClient(base_url=self.base_url, timeout=60.0) as client:
+            data: dict[str, str] = {
+                "file_url": file_url,
+                "is_private": "1" if is_private else "0",
+            }
+            if filename:
+                data["filename"] = filename
+            if attached_to_doctype:
+                data["doctype"] = attached_to_doctype
+            if attached_to_name:
+                data["docname"] = attached_to_name
+
+            resp = await client.post(
+                "/api/method/upload_file",
+                data=data,
+                headers={"Authorization": self.headers["Authorization"]},
+            )
+            resp.raise_for_status()
+            result = resp.json()
+            return result.get("message", result)
+
+    async def list_files(
+        self,
+        attached_to_doctype: str | None = None,
+        attached_to_name: str | None = None,
+        is_private: bool | None = None,
+        limit: int = 20,
+    ) -> list[dict]:
+        """列出檔案。
+
+        Args:
+            attached_to_doctype: 過濾附加到的 DocType
+            attached_to_name: 過濾附加到的文件名稱
+            is_private: 過濾私有/公開檔案
+            limit: 返回數量上限
+
+        Returns:
+            File 文件列表
+        """
+        filters: dict[str, Any] = {}
+        if attached_to_doctype:
+            filters["attached_to_doctype"] = attached_to_doctype
+        if attached_to_name:
+            filters["attached_to_name"] = attached_to_name
+        if is_private is not None:
+            filters["is_private"] = 1 if is_private else 0
+
+        result = await self._request(
+            "GET", "/api/resource/File",
+            params={
+                "fields": json.dumps([
+                    "name", "file_name", "file_url", "file_size",
+                    "attached_to_doctype", "attached_to_name",
+                    "is_private", "creation", "modified",
+                ]),
+                "filters": json.dumps(filters) if filters else None,
+                "order_by": "creation desc",
+                "limit_page_length": limit,
+            },
+        )
+        return result.get("data", [])
+
+    async def get_file_url(self, file_name: str) -> str:
+        """取得檔案的完整下載 URL。
+
+        Args:
+            file_name: File 文件的 name（如 "abc123.pdf"）
+
+        Returns:
+            完整的檔案 URL
+        """
+        doc = await self.get_doc("File", file_name)
+        file_url = doc.get("file_url", "")
+        if file_url and not file_url.startswith("http"):
+            return f"{self.base_url}{file_url}"
+        return file_url
+
+    async def download_file(self, file_name: str) -> tuple[bytes, str]:
+        """下載檔案內容。
+
+        Args:
+            file_name: File 文件的 name
+
+        Returns:
+            (檔案內容 bytes, 檔案名稱)
+        """
+        doc = await self.get_doc("File", file_name)
+        file_url = doc.get("file_url", "")
+        original_filename = doc.get("file_name", file_name)
+
+        if not file_url:
+            raise ValueError(f"File {file_name} has no file_url")
+
+        client = await self._get_client()
+        # 下載時不需要 Content-Type: application/json
+        resp = await client.get(file_url)
+        resp.raise_for_status()
+        return resp.content, original_filename

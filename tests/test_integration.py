@@ -59,6 +59,10 @@ class State:
     so_name: str = ""
     dn_name: str = ""  # Delivery Note
     si_name: str = ""  # Sales Invoice
+    # File operations
+    test_file_name: str = ""
+    attached_file_name: str = ""
+    server_test_file_name: str = ""
 
 
 state = State()
@@ -455,6 +459,107 @@ class TestPhase5ServerTools:
     async def test_05_get_stock_balance_tool(self):
         result = await srv.get_stock_balance.fn(item_code=state.item_code)
         assert isinstance(result, list)
+
+
+# ── Phase 5.5: File Operations ──────────────────────────
+
+@pytest.mark.asyncio(loop_scope="module")
+class TestPhase5_5FileOperations:
+    """Test file upload, list, download operations."""
+
+    async def test_01_upload_file(self, client: ERPNextClient):
+        """上傳測試檔案"""
+        test_content = b"Hello from MCP test!"
+        result = await client.upload_file(
+            file_content=test_content,
+            filename=f"{PREFIX}test_file.txt",
+            is_private=True,
+        )
+        state.test_file_name = result.get("name", "")
+        assert result.get("file_name") == f"{PREFIX}test_file.txt"
+        assert result.get("file_url")
+
+    async def test_02_upload_file_attached(self, client: ERPNextClient):
+        """上傳附加到 Item 的檔案（需要先執行 Phase 1 建立 Item）"""
+        if not state.item_code:
+            pytest.skip("Requires item_code from Phase 1")
+        test_content = b"Attached file content"
+        result = await client.upload_file(
+            file_content=test_content,
+            filename=f"{PREFIX}attached_file.txt",
+            attached_to_doctype="Item",
+            attached_to_name=state.item_code,
+            is_private=True,
+        )
+        state.attached_file_name = result.get("name", "")
+        assert result.get("attached_to_doctype") == "Item"
+        assert result.get("attached_to_name") == state.item_code
+
+    async def test_03_list_files(self, client: ERPNextClient):
+        """列出檔案"""
+        files = await client.list_files(limit=10)
+        assert isinstance(files, list)
+        # 應該能找到我們上傳的檔案
+        file_names = [f.get("file_name", "") for f in files]
+        assert any(PREFIX in name for name in file_names)
+
+    async def test_04_list_files_attached(self, client: ERPNextClient):
+        """列出附加到 Item 的檔案（需要先執行 test_02）"""
+        if not state.attached_file_name:
+            pytest.skip("Requires attached_file from test_02")
+        files = await client.list_files(
+            attached_to_doctype="Item",
+            attached_to_name=state.item_code,
+        )
+        assert len(files) >= 1
+        assert any(f.get("file_name", "").startswith(PREFIX) for f in files)
+
+    async def test_05_get_file_url(self, client: ERPNextClient):
+        """取得檔案 URL"""
+        url = await client.get_file_url(state.test_file_name)
+        assert url
+        assert "http" in url or url.startswith("/")
+
+    async def test_06_download_file(self, client: ERPNextClient):
+        """下載檔案"""
+        content, filename = await client.download_file(state.test_file_name)
+        assert content == b"Hello from MCP test!"
+        assert PREFIX in filename
+
+    async def test_07_server_upload_file_tool(self):
+        """測試 server 層的 upload_file 工具"""
+        import base64
+        test_content = base64.b64encode(b"Server tool test").decode()
+        result = await srv.upload_file.fn(
+            file_content_base64=test_content,
+            filename=f"{PREFIX}server_test.txt",
+        )
+        state.server_test_file_name = result.get("name", "")
+        assert result.get("file_name") == f"{PREFIX}server_test.txt"
+
+    async def test_08_server_list_files_tool(self):
+        """測試 server 層的 list_files 工具"""
+        result = await srv.list_files.fn(limit=10)
+        assert isinstance(result, list)
+
+    async def test_09_server_download_file_tool(self):
+        """測試 server 層的 download_file 工具"""
+        result = await srv.download_file.fn(state.server_test_file_name)
+        assert result.get("content_base64")
+        assert result.get("filename")
+
+    async def test_10_cleanup_files(self, client: ERPNextClient):
+        """清理測試檔案"""
+        for file_name in [
+            getattr(state, "test_file_name", ""),
+            getattr(state, "attached_file_name", ""),
+            getattr(state, "server_test_file_name", ""),
+        ]:
+            if file_name:
+                try:
+                    await client.delete_doc("File", file_name)
+                except Exception:
+                    pass
 
 
 # ── Phase 6: Cleanup ────────────────────────────────────

@@ -310,6 +310,126 @@ async def get_stock_ledger(item_code: str | None = None, warehouse: str | None =
     return await get_client().get_stock_ledger(item_code=item_code, warehouse=warehouse, limit=limit)
 
 
+# ── File Operations ─────────────────────────────────
+
+
+@mcp.tool()
+async def upload_file(
+    file_content_base64: str,
+    filename: str,
+    attached_to_doctype: str | None = None,
+    attached_to_name: str | None = None,
+    is_private: bool = True,
+) -> dict:
+    """Upload a file to ERPNext.
+
+    Args:
+        file_content_base64: File content encoded as base64 string
+        filename: Name for the uploaded file (e.g. "report.pdf")
+        attached_to_doctype: Optional DocType to attach file to (e.g. "Project", "Item")
+        attached_to_name: Optional document name to attach file to (e.g. "PROJ-0001")
+        is_private: Whether file should be private (default True)
+
+    Returns:
+        File document with file_url and other metadata
+    """
+    import base64
+    file_content = base64.b64decode(file_content_base64)
+    return await get_client().upload_file(
+        file_content=file_content,
+        filename=filename,
+        attached_to_doctype=attached_to_doctype,
+        attached_to_name=attached_to_name,
+        is_private=is_private,
+    )
+
+
+@mcp.tool()
+async def upload_file_from_url(
+    file_url: str,
+    filename: str | None = None,
+    attached_to_doctype: str | None = None,
+    attached_to_name: str | None = None,
+    is_private: bool = True,
+) -> dict:
+    """Upload a file to ERPNext from a URL.
+
+    Args:
+        file_url: Source URL to fetch the file from
+        filename: Optional name for the file (will be inferred from URL if not provided)
+        attached_to_doctype: Optional DocType to attach file to
+        attached_to_name: Optional document name to attach file to
+        is_private: Whether file should be private (default True)
+
+    Returns:
+        File document with file_url and other metadata
+    """
+    return await get_client().upload_file_from_url(
+        file_url=file_url,
+        filename=filename,
+        attached_to_doctype=attached_to_doctype,
+        attached_to_name=attached_to_name,
+        is_private=is_private,
+    )
+
+
+@mcp.tool()
+async def list_files(
+    attached_to_doctype: str | None = None,
+    attached_to_name: str | None = None,
+    is_private: bool | None = None,
+    limit: int = 20,
+) -> list[dict]:
+    """List files in ERPNext, optionally filtered by attachment.
+
+    Args:
+        attached_to_doctype: Filter by DocType (e.g. "Project", "Item")
+        attached_to_name: Filter by document name (e.g. "PROJ-0001")
+        is_private: Filter by privacy (True=private, False=public, None=all)
+        limit: Max number of files to return (default 20)
+
+    Returns:
+        List of File documents with name, file_name, file_url, file_size, etc.
+    """
+    return await get_client().list_files(
+        attached_to_doctype=attached_to_doctype,
+        attached_to_name=attached_to_name,
+        is_private=is_private,
+        limit=limit,
+    )
+
+
+@mcp.tool()
+async def get_file_url(file_name: str) -> str:
+    """Get the full download URL for a file.
+
+    Args:
+        file_name: The File document name (e.g. "abc123.pdf" or the hash-based name)
+
+    Returns:
+        Full URL to download the file
+    """
+    return await get_client().get_file_url(file_name)
+
+
+@mcp.tool()
+async def download_file(file_name: str) -> dict:
+    """Download a file's content from ERPNext.
+
+    Args:
+        file_name: The File document name
+
+    Returns:
+        Dict with 'content_base64' (file content as base64) and 'filename' (original filename)
+    """
+    import base64
+    content, filename = await get_client().download_file(file_name)
+    return {
+        "content_base64": base64.b64encode(content).decode("utf-8"),
+        "filename": filename,
+    }
+
+
 def main():
     mcp.run()
 
