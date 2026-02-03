@@ -439,7 +439,7 @@ async def get_supplier_details(name: str | None = None, keyword: str | None = No
 
     Args:
         name: Exact supplier name (e.g. "SF0009-2 - 永心企業社")
-        keyword: Search keyword to find supplier (e.g. "永心")
+        keyword: Search keyword to find supplier (e.g. "永心", "健保局")
 
     Returns:
         Dict with supplier info, address (phone/fax), and contacts (our purchaser + their contacts)
@@ -450,12 +450,21 @@ async def get_supplier_details(name: str | None = None, keyword: str | None = No
     if name:
         supplier = await client.get_doc("Supplier", name)
     elif keyword:
+        # 先搜尋 name 欄位
         suppliers = await client.get_list(
             "Supplier",
-            fields=["name", "supplier_name", "supplier_group", "country"],
+            fields=["name", "supplier_name", "supplier_group", "country", "custom_alias"],
             filters={"name": ["like", f"%{keyword}%"]},
             limit_page_length=1,
         )
+        # 找不到則搜尋 custom_alias 欄位（別名）
+        if not suppliers:
+            suppliers = await client.get_list(
+                "Supplier",
+                fields=["name", "supplier_name", "supplier_group", "country", "custom_alias"],
+                filters={"custom_alias": ["like", f"%{keyword}%"]},
+                limit_page_length=1,
+            )
         if not suppliers:
             return {"error": f"找不到關鍵字「{keyword}」的供應商"}
         supplier = await client.get_doc("Supplier", suppliers[0]["name"])
@@ -501,6 +510,7 @@ async def get_supplier_details(name: str | None = None, keyword: str | None = No
     return {
         "supplier": {
             "name": supplier_name,
+            "alias": supplier.get("custom_alias") or "",
             "group": supplier.get("supplier_group"),
             "country": supplier.get("country"),
             "currency": supplier.get("default_currency"),
@@ -528,12 +538,21 @@ async def get_customer_details(name: str | None = None, keyword: str | None = No
     if name:
         customer = await client.get_doc("Customer", name)
     elif keyword:
+        # 先搜尋 name 欄位
         customers = await client.get_list(
             "Customer",
-            fields=["name", "customer_name", "customer_group", "territory"],
+            fields=["name", "customer_name", "customer_group", "territory", "custom_alias"],
             filters={"name": ["like", f"%{keyword}%"]},
             limit_page_length=1,
         )
+        # 找不到則搜尋 custom_alias 欄位（別名）
+        if not customers:
+            customers = await client.get_list(
+                "Customer",
+                fields=["name", "customer_name", "customer_group", "territory", "custom_alias"],
+                filters={"custom_alias": ["like", f"%{keyword}%"]},
+                limit_page_length=1,
+            )
         if not customers:
             return {"error": f"找不到關鍵字「{keyword}」的客戶"}
         customer = await client.get_doc("Customer", customers[0]["name"])
@@ -578,6 +597,7 @@ async def get_customer_details(name: str | None = None, keyword: str | None = No
     return {
         "customer": {
             "name": customer_name,
+            "alias": customer.get("custom_alias") or "",
             "group": customer.get("customer_group"),
             "territory": customer.get("territory"),
             "currency": customer.get("default_currency"),
