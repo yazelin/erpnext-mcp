@@ -10,6 +10,8 @@ MCP (Model Context Protocol) server for ERPNext REST API, built with [FastMCP](h
 - **Schema** — Inspect DocType field definitions, list all DocTypes
 - **Inventory** — Stock balance, stock ledger, item prices
 - **Trading** — Document conversion (e.g. Quotation → Sales Order), party balance
+- **Supplier/Customer** — Get complete details with address, phone, contacts; supports alias search
+- **Files** — Upload, list, download files
 - **Helpers** — Link search (autocomplete), document count, generic method calls
 
 ## Requirements
@@ -64,6 +66,13 @@ set -a && source .env && set +a && uv run erpnext-mcp
 | `get_item_price` | Item prices from price lists |
 | `make_mapped_doc` | Document conversion (e.g. SO → DN) |
 | `get_party_balance` | Outstanding balance for Customer/Supplier |
+| `get_supplier_details` | Get supplier with address, phone, contacts (supports alias search) |
+| `get_customer_details` | Get customer with address, phone, contacts (supports alias search) |
+| `upload_file` | Upload a file to ERPNext |
+| `upload_file_from_url` | Upload a file from URL |
+| `list_files` | List files attached to a document |
+| `download_file` | Download a file by URL |
+| `get_file_url` | Get download URL for a file |
 
 ## MCP Client Configuration
 
