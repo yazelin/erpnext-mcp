@@ -248,10 +248,15 @@ async def get_doctype_meta(doctype: str) -> list:
 
 @mcp.tool()
 async def get_stock_balance(item_code: str | None = None, warehouse: str | None = None) -> list[dict]:
-    """Get real-time stock balance from Bin.
+    """Get real-time stock balance from Bin (exact match on item_code).
+
+    ⚠️ 此工具對 item_code 做**精確比對**。回傳空陣列代表「找不到對應 Bin 紀錄」，
+    可能是真的零庫存，也可能是 item_code 拼錯或缺少公司前綴（例如系統實際是
+    `CTOS-KV-N40DT` 而你只查了 `KV-N40DT`）。**若回傳空陣列，請改用
+    `find_items(keyword=...)` 或 `get_item_details(keyword=...)` 模糊確認**。
 
     Args:
-        item_code: Optional item code to filter
+        item_code: Optional exact item code to filter
         warehouse: Optional warehouse to filter
     """
     return await get_client().get_stock_balance(item_code=item_code, warehouse=warehouse)
@@ -259,10 +264,13 @@ async def get_stock_balance(item_code: str | None = None, warehouse: str | None 
 
 @mcp.tool()
 async def get_item_price(item_code: str, price_list: str | None = None) -> list[dict]:
-    """Get item prices from Item Price records.
+    """Get item prices from Item Price records (exact match on item_code).
+
+    ⚠️ 對 item_code 做精確比對；空結果可能是 item_code 不存在或無價單。
+    不確定品項代碼時，先用 `find_items(keyword=...)` 找正確的 item_code。
 
     Args:
-        item_code: Item code to look up
+        item_code: Item code to look up (exact match)
         price_list: Optional price list name to filter (e.g. "Standard Selling")
     """
     return await get_client().get_item_price(item_code, price_list=price_list)
@@ -300,14 +308,86 @@ async def get_party_balance(party_type: str, party: str) -> Any:
 
 @mcp.tool()
 async def get_stock_ledger(item_code: str | None = None, warehouse: str | None = None, limit: int = 50) -> list[dict]:
-    """Get stock ledger entries (inventory transaction history).
+    """Get stock ledger entries (inventory transaction history; exact match on item_code).
+
+    ⚠️ 對 item_code 做精確比對；查不到時改用 `find_items(keyword=...)` 找正確代碼。
 
     Args:
-        item_code: Optional item code filter
+        item_code: Optional exact item code filter
         warehouse: Optional warehouse filter
         limit: Max records to return (default 50)
     """
     return await get_client().get_stock_ledger(item_code=item_code, warehouse=warehouse, limit=limit)
+
+
+@mcp.tool()
+async def find_items(
+    keyword: str,
+    item_group: str | None = None,
+    brand: str | None = None,
+    include_disabled: bool = False,
+    limit: int = 20,
+) -> list[dict]:
+    """Fuzzy-search Item across name / item_name / item_code (OR like %keyword%).
+
+    用途：把使用者口語化的關鍵字（原廠型號、品名片段、部分代碼）解析成系統實際的
+    `item_code`。ERPNext 的 Item code 常加公司前綴（例如 `CTOS-KV-N40DT`），
+    用原廠型號 `KV-N40DT` 直接查 `get_stock_balance` 會找不到——此工具負責橋接。
+
+    建議用法：先 `find_items` 確認 item_code，再 `get_stock_balance` / `get_item_price` /
+    `get_stock_ledger`。或者直接用 `get_item_details(keyword=...)` 一次取完。
+
+    Args:
+        keyword: 搜尋關鍵字（會做 `like %keyword%` 比對 name / item_name / item_code）
+        item_group: 可選的 item_group 過濾
+        brand: 可選的品牌過濾
+        include_disabled: 是否包含已停用品項（預設 False）
+        limit: 最多回傳幾筆（預設 20）
+
+    Returns:
+        List of {name, item_code, item_name, item_group, brand, stock_uom, disabled, has_variants}
+    """
+    return await get_client().find_items(
+        keyword=keyword,
+        item_group=item_group,
+        brand=brand,
+        include_disabled=include_disabled,
+        limit=limit,
+    )
+
+
+@mcp.tool()
+async def get_item_details(
+    name: str | None = None,
+    keyword: str | None = None,
+    warehouse: str | None = None,
+    price_list: str | None = None,
+) -> dict:
+    """Get full item info (master + stock balance + prices) by exact name or fuzzy keyword.
+
+    一次回完整資料，避免 AI 為了查一個品項要連打 3~4 支工具。
+    解析順序：
+    1. 若提供 `name` → 直接 get
+    2. 若提供 `keyword` → 先試精確 name；找不到 fallback `find_items` 取第 1 筆候選
+
+    Args:
+        name: 精確 Item name/item_code（例如 "CTOS-KV-N40DT"）
+        keyword: 模糊關鍵字（例如 "KV-N40DT"）；name 沒命中時用
+        warehouse: 可選的倉庫過濾（套用在 stock balance）
+        price_list: 可選的價單過濾（套用在 prices）
+
+    Returns:
+        {
+          "item": {name, item_code, item_name, item_group, brand, stock_uom, ...},
+          "stock": [{item_code, warehouse, actual_qty, projected_qty, ...}, ...],
+          "prices": [{item_code, price_list, price_list_rate, currency, uom}, ...],
+          "other_candidates": [...]   // 其他 fuzzy 候選（如果有的話）
+        }
+        或 {"error": "...", "hint": "..."}（找不到時）
+    """
+    return await get_client().get_item_details(
+        name=name, keyword=keyword, warehouse=warehouse, price_list=price_list,
+    )
 
 
 # ── File Operations ─────────────────────────────────

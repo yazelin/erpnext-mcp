@@ -61,9 +61,11 @@ set -a && source .env && set +a && uv run erpnext-mcp
 | `search_link` | Link field autocomplete search |
 | `list_doctypes` | List all available DocType names |
 | `get_doctype_meta` | Get field definitions for a DocType |
-| `get_stock_balance` | Real-time stock balance from Bin |
-| `get_stock_ledger` | Stock ledger entries (inventory history) |
-| `get_item_price` | Item prices from price lists |
+| `get_stock_balance` | Real-time stock balance from Bin (exact item_code) |
+| `get_stock_ledger` | Stock ledger entries (exact item_code) |
+| `get_item_price` | Item prices from price lists (exact item_code) |
+| `find_items` | Fuzzy-search Item across name / item_name / item_code |
+| `get_item_details` | Item master + stock + price in one call (supports keyword) |
 | `make_mapped_doc` | Document conversion (e.g. SO → DN) |
 | `get_party_balance` | Outstanding balance for Customer/Supplier |
 | `get_supplier_details` | Get supplier with address, phone, contacts (supports alias search) |
