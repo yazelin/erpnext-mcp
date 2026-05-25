@@ -229,27 +229,80 @@ ERPNext MCP Server 提供 19 個工具，分為 CRUD、報表、工作流、輔�
 
 ### get_stock_balance
 
-從 Bin 表取得即時庫存餘額。
+從 Bin 表取得即時庫存餘額。**對 `item_code` 做精確比對**。
 
 | 參數 | 型別 | 必填 | 說明 |
 |------|------|------|------|
-| item_code | str | N | 品項代碼 |
+| item_code | str | N | 品項代碼（精確比對） |
 | warehouse | str | N | 倉庫 |
 
 回傳欄位：`item_code`, `warehouse`, `actual_qty`, `reserved_qty`, `ordered_qty`, `projected_qty`
+
+> ⚠️ 回傳空陣列代表「找不到 Bin 紀錄」，可能是真的零庫存，也可能是 item_code 拼錯
+> 或缺少公司前綴（例如系統實際是 `CTOS-KV-N40DT` 但只查了 `KV-N40DT`）。
+> 此時請改用 [`find_items`](#find_items) 或 [`get_item_details`](#get_item_details) 模糊確認。
 
 ---
 
 ### get_item_price
 
-查詢品項價格。
+查詢品項價格。**對 `item_code` 做精確比對**。
 
 | 參數 | 型別 | 必填 | 說明 |
 |------|------|------|------|
-| item_code | str | Y | 品項代碼 |
+| item_code | str | Y | 品項代碼（精確比對） |
 | price_list | str | N | 價格表名稱，如 `"Standard Selling"` |
 
 回傳欄位：`item_code`, `price_list`, `price_list_rate`, `currency`, `uom`
+
+---
+
+### find_items
+
+跨 `name` / `item_name` / `item_code` 做 `like %keyword%` 的 OR 模糊搜尋。
+用來解決「使用者用原廠型號查詢，但系統 item_code 有公司前綴」的情境。
+
+| 參數 | 型別 | 必填 | 說明 |
+|------|------|------|------|
+| keyword | str | Y | 搜尋關鍵字（部分代碼、原廠型號、品名片段皆可） |
+| item_group | str | N | 限定 item_group |
+| brand | str | N | 限定品牌 |
+| include_disabled | bool | N | 是否包含已停用品項（預設 `False`） |
+| limit | int | N | 最多回傳幾筆（預設 20） |
+
+回傳欄位：`name`, `item_code`, `item_name`, `item_group`, `brand`, `stock_uom`, `disabled`, `has_variants`
+
+範例：
+```
+find_items(keyword="KV-N40DT")
+→ [{"name": "CTOS-KV-N40DT", "item_name": "KV-N40DT 基本模組", ...}, ...]
+```
+
+---
+
+### get_item_details
+
+一次取得品項主檔 + 庫存餘額 + 價格清單，避免為了查一個品項要連打 3~4 支工具。
+
+| 參數 | 型別 | 必填 | 說明 |
+|------|------|------|------|
+| name | str | N* | 精確 Item name/item_code |
+| keyword | str | N* | 模糊關鍵字（name 沒命中時用） |
+| warehouse | str | N | 套用在 stock 的倉庫過濾 |
+| price_list | str | N | 套用在 prices 的價單過濾 |
+
+*`name` 與 `keyword` 至少擇一。解析順序：`name` 直接 get → `keyword` 試精確 name → fallback `find_items` 取第 1 筆。
+
+回傳結構：
+```
+{
+  "item": {"name", "item_code", "item_name", "item_group", "brand", "stock_uom", ...},
+  "stock": [{"item_code", "warehouse", "actual_qty", "projected_qty", ...}, ...],
+  "prices": [{"item_code", "price_list", "price_list_rate", "currency", "uom"}, ...],
+  "other_candidates": [{"name", "item_name"}, ...]  // 其他 fuzzy 候選
+}
+```
+找不到時回 `{"error": "...", "hint": "..."}`。
 
 ---
 
@@ -290,11 +343,11 @@ ERPNext MCP Server 提供 19 個工具，分為 CRUD、報表、工作流、輔�
 
 ### get_stock_ledger
 
-查詢庫存異動記錄。
+查詢庫存異動記錄。**對 `item_code` 做精確比對**；查不到時改用 [`find_items`](#find_items)。
 
 | 參數 | 型別 | 必填 | 說明 |
 |------|------|------|------|
-| item_code | str | N | 品項代碼 |
+| item_code | str | N | 品項代碼（精確比對） |
 | warehouse | str | N | 倉庫 |
 | limit | int | N | 最大筆數（預設 50） |
 

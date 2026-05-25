@@ -208,6 +208,127 @@ class ERPNextClient:
         )
         return result.get("data", [])
 
+    async def find_items(
+        self,
+        keyword: str,
+        item_group: str | None = None,
+        brand: str | None = None,
+        include_disabled: bool = False,
+        limit: int = 20,
+    ) -> list[dict]:
+        """Fuzzy-search Item by keyword across name / item_name / item_code.
+
+        ERPNext 的 Item code 經常加公司前綴（例如 `CTOS-KV-N40DT`），
+        使用者直接用原廠型號（`KV-N40DT`）查 `get_stock_balance` 會回空陣列。
+        此方法用 `like %keyword%` 對 name / item_name / item_code 三個欄位做 OR 查詢，
+        讓 AI 可以先從關鍵字找到實際 item_code 後再查庫存/價格。
+        """
+        kw = keyword.strip()
+        if not kw:
+            return []
+
+        like = f"%{kw}%"
+        or_filters: list[list[Any]] = [
+            ["Item", "name", "like", like],
+            ["Item", "item_name", "like", like],
+            ["Item", "item_code", "like", like],
+        ]
+        filters: list[list[Any]] = []
+        if item_group:
+            filters.append(["Item", "item_group", "=", item_group])
+        if brand:
+            filters.append(["Item", "brand", "=", brand])
+        if not include_disabled:
+            filters.append(["Item", "disabled", "=", 0])
+
+        params: dict[str, Any] = {
+            "fields": json.dumps([
+                "name", "item_code", "item_name", "item_group",
+                "brand", "stock_uom", "disabled", "has_variants",
+            ]),
+            "or_filters": json.dumps(or_filters),
+            "limit_page_length": limit,
+        }
+        if filters:
+            params["filters"] = json.dumps(filters)
+
+        result = await self._request("GET", "/api/resource/Item", params=params)
+        return result.get("data", [])
+
+    async def get_item_details(
+        self,
+        name: str | None = None,
+        keyword: str | None = None,
+        warehouse: str | None = None,
+        price_list: str | None = None,
+    ) -> dict:
+        """Get full item info (master + stock + price) by exact name or keyword.
+
+        Resolution order:
+        1. `name` 直接 get_doc
+        2. `keyword` exact name match → fallback to fuzzy `find_items`，取第 1 筆
+        """
+        if not name and not keyword:
+            return {"error": "請提供 name 或 keyword"}
+
+        item: dict[str, Any] | None = None
+        candidates: list[dict] = []
+
+        if name:
+            try:
+                item = await self.get_doc("Item", name)
+            except Exception:
+                pass
+
+        if item is None and keyword:
+            kw = keyword.strip()
+            # 先試精確 name
+            exact = await self.get_list(
+                "Item",
+                fields=["name", "item_code", "item_name", "item_group", "brand", "stock_uom", "disabled", "has_variants"],
+                filters={"name": kw},
+                limit_page_length=1,
+            )
+            if exact:
+                item = await self.get_doc("Item", exact[0]["name"])
+            else:
+                candidates = await self.find_items(kw, limit=10)
+                if candidates:
+                    item = await self.get_doc("Item", candidates[0]["name"])
+
+        if item is None:
+            return {
+                "error": f"找不到品項：{name or keyword}",
+                "hint": "可以改用 find_items(keyword=...) 模糊搜尋確認系統內的 item_code",
+            }
+
+        item_code = item.get("item_code") or item.get("name")
+        stock = await self.get_stock_balance(item_code=item_code, warehouse=warehouse)
+        try:
+            prices = await self.get_item_price(item_code, price_list=price_list)
+        except Exception:
+            prices = []
+
+        return {
+            "item": {
+                "name": item.get("name"),
+                "item_code": item.get("item_code"),
+                "item_name": item.get("item_name"),
+                "item_group": item.get("item_group"),
+                "brand": item.get("brand"),
+                "stock_uom": item.get("stock_uom"),
+                "disabled": bool(item.get("disabled")),
+                "has_variants": bool(item.get("has_variants")),
+                "description": item.get("description"),
+            },
+            "stock": stock,
+            "prices": prices,
+            "other_candidates": [
+                {"name": c["name"], "item_name": c.get("item_name")}
+                for c in candidates[1:]
+            ] if len(candidates) > 1 else [],
+        }
+
     # --- File operations ---
 
     async def upload_file(
